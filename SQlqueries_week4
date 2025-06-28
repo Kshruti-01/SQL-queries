@@ -47,3 +47,172 @@ Final Resultant Table if the student is unallotted:
 StudentId
 159103036
 (Table Name: UnallotedStudents)
+
+
+Step 1: create tables
+--Student details
+CREATE TABLE StudentDetails (
+    StudentId INT PRIMARY KEY,
+    StudentName VARCHAR(100),
+    GPA FLOAT,
+    Branch VARCHAR(10),
+    Section VARCHAR(10)
+);
+
+--Subject Details
+CREATE TABLE SubjectDetails (
+    SubjectId VARCHAR(10) PRIMARY KEY,
+    SubjectName VARCHAR(100),
+    MaxSeats INT,
+    RemainingSeats INT
+);
+
+--StudentPreferences
+CREATE TABLE StudentPreferences (
+    StudentId INT,
+    SubjectId VARCHAR(10),
+    Preference INT,
+    PRIMARY KEY (StudentId, Preference),
+    FOREIGN KEY (StudentId) REFERENCES StudentDetails(StudentId),
+    FOREIGN KEY (SubjectId) REFERENCES SubjectDetails(SubjectId)
+);
+
+--Allotments
+CREATE TABLE Allotments (
+    StudentId INT PRIMARY KEY,
+    SubjectId VARCHAR(10),
+    FOREIGN KEY (StudentId) REFERENCES StudentDetails(StudentId),
+    FOREIGN KEY (SubjectId) REFERENCES SubjectDetails(SubjectId)
+);
+--Unalloted Students table
+CREATE TABLE UnallottedStudents (
+    StudentId INT PRIMARY KEY,
+    FOREIGN KEY (StudentId) REFERENCES StudentDetails(StudentId)
+);
+
+--Insert Sample data
+-- Insert Subjects
+INSERT INTO SubjectDetails VALUES
+('PO142', 'Basics of Political Science', 120, 119),
+('PO143', 'Basics of Accounting', 60, 59),
+('PO144', 'Basics of Financial Markets', 60, 60),
+('PO145', 'Eco philosophy', 90, 90),
+('PO146', 'Automobiles Trends', 60, 60);
+
+-- Insert Students
+INSERT INTO StudentDetails VALUES
+(1193001, 'Aashvi Agarwal', 6.9, 'CCE', 'A'),
+(1193002, 'Ridhi Agarwal', 7.2, 'CCE', 'A'),
+(1193003, 'Mihir Mahnot', 7.6, 'CCE', 'A'),
+(1193004, 'Shruti Mahnot', 7.3, 'CCE', 'A'),
+(1193005, 'Aryan Shah', 5.2, 'CCE', 'B');
+
+-- Insert Preferences
+INSERT INTO StudentPreferences VALUES
+(1193001, 'PO142', 1),
+(1193001, 'PO143', 2),
+(1193001, 'PO145', 3),
+
+(1193002, 'PO142', 1),
+(1193002, 'PO144', 2),
+(1193002, 'PO145', 3),
+
+(1193003, 'PO142', 1),
+(1193003, 'PO143', 2),
+(1193003, 'PO144', 3),
+
+(1193004, 'PO143', 1),
+(1193004, 'PO145', 2),
+(1193004, 'PO144', 3),
+
+(1193005, 'PO145', 1),
+(1193005, 'PO143', 2),
+(1193005, 'PO146', 3);
+
+Step 2:Allocate Subject
+USE SubjectAllocation;
+GO
+
+DROP PROCEDURE IF EXISTS AllocateSubjects;
+GO
+
+CREATE PROCEDURE AllocateSubjects
+AS
+BEGIN
+    -- Clear previous data
+    DELETE FROM Allotments;
+    DELETE FROM UnallottedStudents;
+
+    DECLARE @StudentId INT, @SubjectId VARCHAR(10), @Seats INT, @Pref INT;
+    DECLARE @Allocated BIT;
+
+    DECLARE student_cursor CURSOR FOR
+        SELECT StudentId FROM StudentDetails ORDER BY GPA DESC;
+
+    OPEN student_cursor;
+    FETCH NEXT FROM student_cursor INTO @StudentId;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @Pref = 1;
+        SET @Allocated = 0;
+
+        WHILE @Pref <= 3 AND @Allocated = 0
+        BEGIN
+            SELECT @SubjectId = SubjectId
+            FROM StudentPreferences
+            WHERE StudentId = @StudentId AND Preference = @Pref;
+
+            IF @SubjectId IS NOT NULL
+            BEGIN
+                SELECT @Seats = RemainingSeats FROM SubjectDetails WHERE SubjectId = @SubjectId;
+
+                IF @Seats > 0
+                BEGIN
+                    INSERT INTO Allotments (StudentId, SubjectId)
+                    VALUES (@StudentId, @SubjectId);
+
+                    UPDATE SubjectDetails
+                    SET RemainingSeats = RemainingSeats - 1
+                    WHERE SubjectId = @SubjectId;
+
+                    SET @Allocated = 1;
+                END
+            END
+
+            SET @Pref = @Pref + 1;
+        END
+
+        IF @Allocated = 0
+        BEGIN
+            INSERT INTO UnallottedStudents (StudentId) VALUES (@StudentId);
+        END
+
+        FETCH NEXT FROM student_cursor INTO @StudentId;
+    END
+
+    CLOSE student_cursor;
+    DEALLOCATE student_cursor;
+END;
+GO
+
+Step 3: Execute Procedure
+USE SubjectAllocation;
+GO
+
+EXEC AllocateSubjects;
+GO
+
+SELECT * FROM Allotments;
+SELECT * FROM UnallottedStudents;
+
+Step 4: Update Subject Details
+USE SubjectAllocation;
+GO
+
+-- Reset all subjects' remaining seats to full capacity
+UPDATE SubjectDetails
+SET RemainingSeats = MaxSeats;
+
+
+
